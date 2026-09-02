@@ -193,7 +193,12 @@ export class ScorePlayer {
     startMeasure: 0,
   };
 
-  private onStateChange: ((state: PlayerState) => void) | null = null;
+  /**
+   * Mehrere Teile der Oberflaeche interessieren sich fuer den Zustand
+   * (Steuerleiste, Notenbild, Uebungsmodus). Deshalb eine Menge von
+   * Zuhoerern statt eines einzelnen Rueckrufs.
+   */
+  private stateListeners = new Set<(state: PlayerState) => void>();
 
   /** Vorausplanung in Sekunden. */
   private static readonly LOOKAHEAD = 0.2;
@@ -207,9 +212,18 @@ export class ScorePlayer {
     this.masterGain.connect(this.context.destination);
   }
 
-  /** Registriert einen Zustands-Callback fuer die UI. */
-  setStateListener(listener: ((state: PlayerState) => void) | null): void {
-    this.onStateChange = listener;
+  /**
+   * Registriert einen Zustands-Rueckruf fuer die UI.
+   *
+   * @returns Funktion, die den Rueckruf wieder entfernt
+   */
+  addStateListener(listener: (state: PlayerState) => void): () => void {
+    this.stateListeners.add(listener);
+    // Sofort den aktuellen Stand melden, damit die UI nicht leer startet.
+    listener({ ...this.state });
+    return () => {
+      this.stateListeners.delete(listener);
+    };
   }
 
   getState(): PlayerState {
@@ -417,7 +431,8 @@ export class ScorePlayer {
   }
 
   private emit(): void {
-    this.onStateChange?.({ ...this.state });
+    const snapshot = { ...this.state };
+    for (const listener of this.stateListeners) listener(snapshot);
   }
 
   /** Spielt einen einzelnen Ton sofort (fuer Vorhoeren im Editor). */
@@ -437,6 +452,7 @@ export class ScorePlayer {
   /** Gibt alle Ressourcen frei. */
   dispose(): void {
     this.stop();
+    this.stateListeners.clear();
     this.masterGain.disconnect();
     for (const gain of this.staffGains.values()) gain.disconnect();
     this.staffGains.clear();

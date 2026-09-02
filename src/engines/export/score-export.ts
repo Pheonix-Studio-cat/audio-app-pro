@@ -6,9 +6,9 @@
  * Das SVG wird in ein Canvas gerastert (PNG/JPG) beziehungsweise als
  * Bild in ein jsPDF-Dokument eingebettet (PDF).
  */
-import { jsPDF } from 'jspdf';
 import type { Score } from '../../core/types';
 import { renderScore } from '../notation/vexflow-renderer';
+import { getEmbeddedFontCss, loadNotationFonts } from '../notation/fonts';
 
 export type ImageFormat = 'png' | 'jpg';
 
@@ -31,14 +31,20 @@ export const DEFAULT_EXPORT_OPTIONS: ScoreExportOptions = {
 };
 
 /**
- * Rendert die gesamte Partitur in ein unsichtbares Element und liefert
- * das SVG als Text zurueck.
+ * Rendert die Partitur als eigenstaendiges SVG.
+ *
+ * Entscheidend ist das Einbetten der Schriftart: VexFlow setzt Notenkoepfe,
+ * Schluessel und Pausen als Textzeichen der Bravura-Schrift. Ein SVG, das
+ * aus dem Dokument geloest wird, kann diese Schrift nicht nachladen - ohne
+ * Einbettung blieben nur Notenlinien, Haelse und Balken uebrig.
  */
-export function renderScoreToSvg(
+export async function renderScoreToSvg(
   score: Score,
   options: Partial<ScoreExportOptions> = {},
-): { svg: string; width: number; height: number } {
+): Promise<{ svg: string; width: number; height: number }> {
   const opts = { ...DEFAULT_EXPORT_OPTIONS, ...options };
+  await loadNotationFonts();
+  const fontCss = await getEmbeddedFontCss();
 
   const container = document.createElement('div');
   container.style.position = 'absolute';
@@ -60,20 +66,26 @@ export function renderScoreToSvg(
     const svgElement = container.querySelector('svg');
     if (!svgElement) throw new Error('Das Notenbild konnte nicht erzeugt werden.');
 
-    // Attribute setzen, damit das SVG eigenstaendig darstellbar ist.
     svgElement.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     svgElement.setAttribute('width', String(opts.width));
     svgElement.setAttribute('height', String(result.height));
     svgElement.setAttribute('viewBox', `0 0 ${opts.width} ${result.height}`);
 
-    // Weisser Hintergrund, damit der Export nicht transparent wirkt.
+    // Schriftarten als Data-URI einbetten.
+    if (fontCss) {
+      const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      style.textContent = fontCss;
+      svgElement.insertBefore(style, svgElement.firstChild);
+    }
+
+    // Weisser Grund, damit der Export nicht transparent wirkt.
     const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     background.setAttribute('x', '0');
     background.setAttribute('y', '0');
     background.setAttribute('width', String(opts.width));
     background.setAttribute('height', String(result.height));
     background.setAttribute('fill', opts.background);
-    svgElement.insertBefore(background, svgElement.firstChild);
+    svgElement.insertBefore(background, style_or_first(svgElement, fontCss));
 
     return {
       svg: new XMLSerializer().serializeToString(svgElement),
@@ -85,6 +97,12 @@ export function renderScoreToSvg(
   }
 }
 
+/** Der Hintergrund muss hinter dem Inhalt, aber nach dem Style-Block liegen. */
+function style_or_first(svgElement: SVGElement, fontCss: string): ChildNode | null {
+  if (!fontCss) return svgElement.firstChild;
+  return svgElement.firstChild?.nextSibling ?? null;
+}
+
 /** Zeichnet ein SVG in ein Canvas. */
 async function svgToCanvas(
   svg: string,
@@ -94,24 +112,34 @@ async function svgToCanvas(
   background: string,
 ): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.round(width * scale);
-  canvas.height = Math.round(height * scale);
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Canvas wird von diesem Browser nicht unterstuetzt.');
 
   context.fillStyle = background;
   context.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Als Data-URL laden: vermeidet Probleme mit dem Canvas-Sicherheitsmodell.
-  const encoded = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  // Ueber einen Blob laden: bei eingebetteten Schriften wird die Data-URL
+  // sonst sehr lang und einzelne Browser lehnen sie ab.
+  const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
   const image = new Image();
-  await new Promise<void>((resolve, reject) => {
-    image.onload = () => resolve();
-    image.onerror = () => reject(new Error('Das Notenbild konnte nicht geladen werden.'));
-    image.src = encoded;
-  });
 
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('Das Notenbild konnte nicht geladen werden.'));
+      image.src = url;
+    });
+    // decode() stellt sicher, dass die eingebettete Schrift angewandt wurde.
+    if (typeof image.decode === 'function') {
+      await image.decode().catch(() => undefined);
+    }
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
   return canvas;
 }
 
@@ -122,7 +150,7 @@ export async function exportScoreImage(
   options: Partial<ScoreExportOptions> = {},
 ): Promise<Blob> {
   const opts = { ...DEFAULT_EXPORT_OPTIONS, ...options };
-  const { svg, width, height } = renderScoreToSvg(score, opts);
+  const { svg, width, height } = await renderScoreToSvg(score, opts);
   const canvas = await svgToCanvas(svg, width, height, opts.scale, opts.background);
 
   const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
@@ -168,6 +196,8 @@ export async function exportScorePdf(
 ): Promise<Blob> {
   const opts = { ...DEFAULT_PDF_OPTIONS, ...options };
 
+  // jsPDF wird erst hier geladen, damit es nicht im Startpaket landet.
+  const { jsPDF } = await import('jspdf');
   const pdf = new jsPDF({
     orientation: opts.orientation,
     unit: 'mm',
@@ -179,7 +209,7 @@ export async function exportScorePdf(
   const contentWidth = pageWidth - opts.margin * 2;
   const contentHeight = pageHeight - opts.margin * 2;
 
-  const { svg, width, height } = renderScoreToSvg(score, opts);
+  const { svg, width, height } = await renderScoreToSvg(score, opts);
   const canvas = await svgToCanvas(svg, width, height, opts.scale, opts.background);
 
   // Millimeter pro Bildpixel, damit die Breite genau passt.
@@ -211,6 +241,9 @@ export async function exportScorePdf(
       0, 0, canvas.width, currentSliceHeight,
     );
 
+    // "FAST" aktiviert die Deflate-Kompression; ohne sie wuerde jsPDF die
+    // Bilddaten unkomprimiert einbetten und die Datei um ein Vielfaches
+    // groesser machen.
     pdf.addImage(
       sliceCanvas.toDataURL('image/png'),
       'PNG',
@@ -218,6 +251,8 @@ export async function exportScorePdf(
       opts.margin,
       contentWidth,
       currentSliceHeight * mmPerPixel,
+      undefined,
+      'FAST',
     );
   }
 

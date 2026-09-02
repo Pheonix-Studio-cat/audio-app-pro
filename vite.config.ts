@@ -14,7 +14,17 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
-    chunkSizeWarningLimit: 1500,
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        // VexFlow bringt die Notenschriftarten mit und ist deshalb gross.
+        // Als eigener Chunk kann der Browser es unabhaengig zwischenspeichern.
+        manualChunks: {
+          vexflow: ['vexflow'],
+          react: ['react', 'react-dom', 'react-dom/client'],
+        },
+      },
+    },
   },
   worker: {
     format: 'es',

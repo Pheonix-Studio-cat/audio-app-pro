@@ -1,5 +1,8 @@
 /**
- * Kopiert den ffmpeg.wasm-Kern aus node_modules nach public/ffmpeg.
+ * Kopiert die grossen Laufzeitdateien aus node_modules nach public/.
+ *
+ * 1. Den ffmpeg.wasm-Kern nach public/ffmpeg.
+ * 2. Die Notenschriftarten Bravura und Academico nach public/fonts.
  *
  * Damit wird der Kern von der eigenen Herkunft (Origin) ausgeliefert und
  * nicht von einem CDN. Das ist wichtig fuer den Datenschutz: die Mediendatei
@@ -25,16 +28,40 @@ if (!existsSync(source)) {
       'ffmpeg.wasm steht dann nicht zur Verfuegung; die App nutzt die ' +
       'Browser-Dekodierung als Alternative.',
   );
-  process.exit(0);
+} else {
+  mkdirSync(target, { recursive: true });
+  for (const file of files) {
+    const from = join(source, file);
+    if (!existsSync(from)) {
+      console.warn(`[ffmpeg] ${file} fehlt in @ffmpeg/core.`);
+      continue;
+    }
+    copyFileSync(from, join(target, file));
+    console.log(`[ffmpeg] ${file} nach public/ffmpeg kopiert.`);
+  }
 }
 
-mkdirSync(target, { recursive: true });
-for (const file of files) {
-  const from = join(source, file);
+// --- Notenschriftarten ---
+
+/**
+ * VexFlow wuerde seine Schriften sonst von einem oeffentlichen CDN laden.
+ * Damit die App offline funktioniert und keine externe Verbindung aufbaut,
+ * werden sie mit ausgeliefert.
+ */
+const fontTarget = join(root, 'public', 'fonts');
+const fontSources = [
+  ['@vexflow-fonts/bravura', 'bravura.woff2'],
+  ['@vexflow-fonts/academico', 'academico.woff2'],
+  ['@vexflow-fonts/academico', 'academico-bold.woff2'],
+];
+
+mkdirSync(fontTarget, { recursive: true });
+for (const [packageName, file] of fontSources) {
+  const from = join(root, 'node_modules', packageName, file);
   if (!existsSync(from)) {
-    console.warn(`[ffmpeg] ${file} fehlt in @ffmpeg/core.`);
+    console.warn(`[fonts] ${file} fehlt in ${packageName}.`);
     continue;
   }
-  copyFileSync(from, join(target, file));
-  console.log(`[ffmpeg] ${file} nach public/ffmpeg kopiert.`);
+  copyFileSync(from, join(fontTarget, file));
+  console.log(`[fonts] ${file} nach public/fonts kopiert.`);
 }
