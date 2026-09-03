@@ -48,6 +48,8 @@ export function PracticeView() {
   const [mode, setMode] = useState<'free' | 'score' | 'scale'>('free');
   const [freeTarget, setFreeTarget] = useState(60);
   const [savedForSession, setSavedForSession] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const [micFallback, setMicFallback] = useState(false);
 
   const sessionRef = useRef<PracticeSession | null>(null);
   sessionRef.current = session;
@@ -96,6 +98,8 @@ export function PracticeView() {
   const requestMicrophone = useCallback(async () => {
     const result = await analyzer.start(handlePitch);
     setStatus(result);
+    setMicError(analyzer.getLastError());
+    setMicFallback(analyzer.usedFallback());
     if (result === 'granted') {
       notify('success', 'Mikrofon aktiv. Das Signal wird nur lokal analysiert.');
     } else if (result === 'denied') {
@@ -207,6 +211,16 @@ export function PracticeView() {
         <Notice kind="danger">
           Das Mikrofon konnte nicht geoeffnet werden. Pruefe, ob ein Geraet angeschlossen ist
           und keine andere Anwendung es belegt.
+          {micError && (
+            <div className="tiny mono mt-1">Meldung des Browsers: {micError}</div>
+          )}
+        </Notice>
+      )}
+      {micActive && micFallback && (
+        <Notice kind="warning">
+          Dein Geraet erlaubt es nicht, die Signalaufbereitung des Browsers abzuschalten.
+          Echounterdrueckung und automatische Aussteuerung koennen die gemessene Tonhoehe
+          leicht verfaelschen. Der Uebungsmodus funktioniert trotzdem.
         </Notice>
       )}
 

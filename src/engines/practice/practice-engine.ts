@@ -157,19 +157,11 @@ export class MicrophoneAnalyzer {
 
     this.status = 'requesting';
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          // Signalverarbeitung des Browsers abschalten: sie wuerde die
-          // Tonhoehe verfaelschen.
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
-        },
-        video: false,
-      });
+      this.stream = await this.openMicrophone();
     } catch (error) {
       const name = (error as DOMException).name;
       this.status = name === 'NotAllowedError' || name === 'SecurityError' ? 'denied' : 'error';
+      this.lastError = `${name}: ${(error as DOMException).message}`;
       return this.status;
     }
 
@@ -244,6 +236,52 @@ export class MicrophoneAnalyzer {
     this.listener?.(result);
     this.animationFrame = requestAnimationFrame(this.loop);
   };
+
+  /**
+   * Oeffnet das Mikrofon.
+   *
+   * Zuerst wird versucht, die Signalaufbereitung des Browsers abzuschalten:
+   * Echounterdrueckung und automatische Aussteuerung verfaelschen die
+   * Tonhoehe. Nicht jedes Geraet und nicht jede Umgebung unterstuetzt diese
+   * Vorgaben; schlaegt der Versuch fehl, wird ohne Vorgaben geoeffnet,
+   * damit der Uebungsmodus ueberhaupt nutzbar bleibt.
+   */
+  private async openMicrophone(): Promise<MediaStream> {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+        video: false,
+      });
+    } catch (error) {
+      const name = (error as DOMException).name;
+      // Eine verweigerte Erlaubnis bringt ein zweiter Versuch nicht weiter.
+      if (name === 'NotAllowedError' || name === 'SecurityError') throw error;
+      this.usedFallbackConstraints = true;
+      return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    }
+  }
+
+  /** Letzte Fehlermeldung des Browsers, fuer die Anzeige. */
+  private lastError: string | null = null;
+  /** Wurde ohne die bevorzugten Vorgaben geoeffnet? */
+  private usedFallbackConstraints = false;
+
+  /** Beschreibung des letzten Fehlers, falls einer auftrat. */
+  getLastError(): string | null {
+    return this.lastError;
+  }
+
+  /**
+   * Musste die Signalaufbereitung des Browsers hingenommen werden? Dann ist
+   * die Tonhoehenmessung etwas ungenauer.
+   */
+  usedFallback(): boolean {
+    return this.usedFallbackConstraints;
+  }
 
   /** Beendet die Analyse und gibt das Mikrofon frei. */
   stop(): void {

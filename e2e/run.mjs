@@ -28,6 +28,12 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`);
 }
 
+/** Eine Pruefung, die in dieser Umgebung nicht moeglich ist. */
+function skip(name, reason) {
+  results.push({ name, ok: true, skipped: true });
+  console.log(`SKIP  ${name}  (${reason})`);
+}
+
 mkdirSync(SHOTS, { recursive: true });
 
 // --- Vorschau-Server starten ---
@@ -55,7 +61,13 @@ try {
 
   browser = await chromium.launch({
     executablePath: CHROME,
-    args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'],
+    args: [
+      '--no-sandbox',
+      '--autoplay-policy=no-user-gesture-required',
+      // Liefert einen gleichbleibenden Testton statt eines echten Mikrofons.
+      '--use-fake-device-for-media-capture',
+      '--use-fake-ui-for-media-stream',
+    ],
   });
   const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
 
@@ -234,6 +246,30 @@ try {
   check('Erkannte Partitur ist im Editor', pitches >= 7, `${pitches} Notengruppen`);
   await page.screenshot({ path: `${SHOTS}/07-editor-analyse.png`, fullPage: true });
 
+  // --- Video zu Audio ---
+  // Das Testvideo traegt dieselbe Tonleiter als Tonspur.
+  await page.locator('.nav-item', { hasText: 'Video zu Audio' }).click();
+  await page.waitForTimeout(700);
+  await page.locator('input[type=file]').first().setInputFiles('e2e/fixtures/testvideo.webm');
+  await page.waitForTimeout(2500);
+
+  await page.getByRole('button', { name: 'Tonspur extrahieren' }).click();
+  await page.waitForSelector('.card:has-text("3. Ergebnis")', { timeout: 120000 });
+  await page.waitForTimeout(600);
+
+  const videoResult = await page.locator('.card').filter({ hasText: '3. Ergebnis' }).last().innerText();
+  check('Tonspur aus Video extrahiert', /dauer/i.test(videoResult));
+  const durationOk = /0:0[34]/.test(videoResult);
+  check('Extrahierte Tonspur hat die richtige Laenge', durationOk, 'erwartet rund 4 Sekunden');
+  await page.screenshot({ path: `${SHOTS}/08-video.png`, fullPage: true });
+
+  // Die extrahierte Tonspur als WAV speichern.
+  const wavDownload = page.waitForEvent('download', { timeout: 45000 });
+  await page.getByRole('button', { name: 'Audiodatei speichern' }).click();
+  const wavFile = await wavDownload;
+  await wavFile.saveAs(`${SHOTS}/extrahiert.wav`);
+  check('Extrahierte Tonspur laesst sich speichern', wavFile.suggestedFilename().endsWith('.wav'));
+
   // --- Projekt speichern ---
   await page.locator('.nav-item', { hasText: 'Noteneditor' }).click();
   await page.waitForTimeout(600);
@@ -268,6 +304,69 @@ try {
     (await page.locator('html').getAttribute('data-theme')) === 'dark');
   await page.screenshot({ path: `${SHOTS}/05-einstellungen.png`, fullPage: true });
 
+  // --- Uebungsmodus mit Mikrofon ---
+  // Chromium liefert mit --use-fake-device-for-media-capture normalerweise
+  // einen Testton. Steht dem Rechner ueberhaupt kein Audio-Eingang zur
+  // Verfuegung, gibt es auch kein Fake-Geraet; dann wird geprueft, ob die
+  // App den Ausfall sauber meldet und bedienbar bleibt.
+  const micPage = await browser.newContext({
+    permissions: ['microphone'],
+    viewport: { width: 1440, height: 950 },
+  });
+  const micTab = await micPage.newPage();
+  await micTab.goto(BASE, { waitUntil: 'networkidle' });
+
+  const hasAudioInput = await micTab.evaluate(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      return devices.some((device) => device.kind === 'audioinput');
+    } catch {
+      return false;
+    }
+  });
+
+  await micTab.locator('.nav-item', { hasText: 'Ueben' }).click();
+  await micTab.waitForTimeout(700);
+  await micTab.getByRole('button', { name: 'Mikrofon aktivieren' }).click();
+  await micTab.waitForTimeout(2500);
+  const micView = await micTab.locator('.view').innerText();
+
+  if (hasAudioInput) {
+    check('Mikrofonzugriff wurde erteilt', micView.includes('Eingangspegel'));
+
+    const isPlaceholder = (text) => text === '' || /^[-\u2013\u2014]$/.test(text);
+    let detectedNote = '';
+    for (let attempt = 0; attempt < 24; attempt++) {
+      await micTab.waitForTimeout(250);
+      detectedNote = (await micTab.locator('.tuner-note').innerText()).trim();
+      if (!isPlaceholder(detectedNote)) break;
+    }
+    check(
+      'Mikrofonsignal wird zu einer Tonhoehe ausgewertet',
+      !isPlaceholder(detectedNote),
+      `erkannt: ${detectedNote || 'nichts'}`,
+    );
+  } else {
+    skip(
+      'Mikrofonsignal wird zu einer Tonhoehe ausgewertet',
+      'dieser Rechner hat keinen Audio-Eingang; die Auswertung selbst deckt ' +
+        'src/__tests__/practice.test.ts ab',
+    );
+    // Ohne Geraet muss die App den Ausfall klar benennen und nutzbar bleiben.
+    check(
+      'Fehlendes Mikrofon wird verstaendlich gemeldet',
+      micView.includes('konnte nicht geoeffnet werden'),
+    );
+    check(
+      'App bleibt ohne Mikrofon bedienbar',
+      (await micTab.locator('.piano').count()) > 0 &&
+        (await micTab.locator('.nav-item').count()) > 0,
+    );
+  }
+
+  await micTab.screenshot({ path: `${SHOTS}/09-ueben-mikrofon.png`, fullPage: true });
+  await micPage.close();
+
   // --- Datenschutz: keine externen Verbindungen ---
   check(
     'Keine Verbindung zu externen Servern',
@@ -283,5 +382,10 @@ try {
 }
 
 const failed = results.filter((r) => !r.ok);
-console.log(`\n${results.length - failed.length} von ${results.length} Pruefungen bestanden.`);
+const skipped = results.filter((r) => r.skipped);
+console.log(
+  `\n${results.length - failed.length - skipped.length} von ` +
+    `${results.length - skipped.length} Pruefungen bestanden` +
+    (skipped.length > 0 ? `, ${skipped.length} uebersprungen.` : '.'),
+);
 process.exit(failed.length > 0 ? 1 : 0);

@@ -204,18 +204,35 @@ Diese Punkte stehen auch in der App selbst unter Einstellungen.
 
 ## Tests
 
-- **46 Unit-Tests** (`npm test`): Tonhoehenerkennung gegen synthetische
+- **60 Unit-Tests** (`npm test`): Tonhoehenerkennung gegen synthetische
   Signale mit bekannter Frequenz, Tempo- und Onset-Erkennung, Quantisierung,
-  Akkord- und Tonarterkennung sowie die Byte- und XML-Struktur der Exporte.
+  Akkord- und Tonarterkennung, die Byte- und XML-Struktur der Exporte sowie
+  die vollstaendige Uebungslogik.
   Darunter fuenf Tests der **gesamten Kette**: aus synthetischem Audio mit
   bekannter Melodie muss am Ende die richtige Notenschrift entstehen -
-  richtige Tonhoehen, richtige Notenwerte, keine erfundenen Akkorde.
-- **31 Browser-Tests** (`npm run test:e2e`): Notensatz, Mausbedienung,
-  Wiedergabe, alle fuenf Exportformate, Projektspeicher, Uebungsmodus ohne
-  Mikrofon, der komplette Weg von der Audiodatei bis zur Partitur und die
-  Zusicherung, dass keine externen Verbindungen entstehen. Der Bildexport
-  wird pixelweise geprueft, damit fehlende Notenzeichen nicht unbemerkt
-  bleiben.
+  richtige Tonhoehen, richtige Notenwerte, keine erfundenen Akkorde,
+  geprueft bei 90, 120 und 150 BPM sowie bei gemischten Notenwerten.
+- **36 Browser-Tests** (`npm run test:e2e`): Notensatz, Mausbedienung,
+  Wiedergabe, alle fuenf Exportformate, Projektspeicher, der komplette Weg
+  von der Audiodatei bis zur Partitur, die Extraktion der Tonspur aus einem
+  echten Video und die Zusicherung, dass keine externen Verbindungen
+  entstehen. Der Bildexport wird pixelweise geprueft, damit fehlende
+  Notenzeichen nicht unbemerkt bleiben.
+
+Die Testdateien erzeugen sich selbst:
+
+```bash
+node e2e/make-fixture.mjs        # Audio mit bekannter Melodie
+node e2e/make-video-fixture.mjs  # Video mit derselben Tonspur
+```
+
+**Zum Mikrofon:** Der eigentliche Geraetezugriff laesst sich nur mit
+echter Hardware pruefen. Fehlt ein Audio-Eingang, ueberspringt der
+Browsertest diesen Punkt ausdruecklich und prueft stattdessen, dass die
+App den Ausfall verstaendlich meldet und bedienbar bleibt. Die Auswertung
+dahinter - Tonhoehe erkennen, mit der Zielnote vergleichen, Haltezeit
+verlangen, Trefferquote fuehren - deckt `src/__tests__/practice.test.ts`
+mit zwoelf Tests vollstaendig ab.
 
 ## Lizenz
 
