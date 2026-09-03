@@ -4,9 +4,15 @@
 # vollstaendig statisch ausliefern. Vor dem Deploy laufen Typpruefung und
 # Unit-Tests, damit kein defekter Stand online geht.
 #
-# Der Workflow aktiviert GitHub Pages bei Bedarf selbst (enablement: true).
-# Nachsehen laesst sich das unter:
+# EINMALIGE EINRICHTUNG - ohne sie schlaegt der Workflow fehl:
 #   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions"
+#
+# Das Aktivieren von Pages laesst sich nicht aus dem Workflow heraus
+# erledigen. Der GITHUB_TOKEN eines Workflows kann keine Pages-Seite
+# anlegen ("Resource not accessible by integration"); dafuer waeren
+# Administrationsrechte noetig, die sich einem Workflow-Token nicht
+# erteilen lassen. Die Einstellung muss deshalb einmal von Hand gesetzt
+# werden. Danach laeuft jede weitere Veroeffentlichung automatisch.
 
 name: Auf GitHub Pages veroeffentlichen
 
@@ -56,14 +62,11 @@ jobs:
           VITE_BASE: /${{ github.event.repository.name }}/
         run: npm run build
 
+      # Schlaegt dieser Schritt mit "Get Pages site failed" fehl, ist Pages
+      # im Repository noch nicht eingeschaltet - siehe Hinweis am Anfang
+      # dieser Datei.
       - name: Pages einrichten
         uses: actions/configure-pages@v5
-        with:
-          # Aktiviert GitHub Pages im Repository, falls das noch nicht
-          # geschehen ist. Ohne diese Angabe bricht der Schritt mit
-          # "Get Pages site failed" ab und man muesste die Einstellung
-          # erst von Hand vornehmen.
-          enablement: true
 
       - name: Build hochladen
         uses: actions/upload-pages-artifact@v3

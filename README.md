@@ -9,6 +9,8 @@ empfaengt, keinen Analysedienst und keine Verbindung zu einem CDN.
 
 **Online ausprobieren:**
 https://pheonix-studio-cat.github.io/audio-app-pro/
+(erreichbar, sobald GitHub Pages im Repository eingeschaltet ist -
+siehe [Veroeffentlichung](#veroeffentlichung))
 
 ---
 
@@ -40,9 +42,15 @@ Ein Push auf `main` baut die App und veroeffentlicht sie ueber
 vorher: Typpruefung und Unit-Tests laufen im selben Job, ein defekter
 Stand geht nicht online.
 
-Der Workflow aktiviert GitHub Pages bei Bedarf selbst. Nachsehen laesst
-sich die Einstellung unter **Settings -> Pages -> Build and deployment**;
-als Quelle muss dort **GitHub Actions** stehen.
+**Einmalig noetig:** Im Repository unter
+**Settings -> Pages -> Build and deployment -> Source** den Eintrag
+**GitHub Actions** waehlen. Ohne diesen Schritt bricht der Workflow mit
+"Get Pages site failed" ab.
+
+Das laesst sich nicht automatisieren: Der GITHUB_TOKEN eines Workflows
+darf keine Pages-Seite anlegen, dafuer waeren Administrationsrechte
+noetig, die einem Workflow-Token nicht erteilt werden koennen. Nach dem
+einen Klick laeuft jede weitere Veroeffentlichung von selbst.
 
 Auf Pages liegt die App in einem Unterverzeichnis. Der Workflow setzt
 deshalb `VITE_BASE` auf den Repository-Namen; Schriften und ffmpeg-Kern
