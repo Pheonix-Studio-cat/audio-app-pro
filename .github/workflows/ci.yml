@@ -1,0 +1,51 @@
+# Prueft jeden Pull Request und jeden Push auf main.
+#
+# Der Browsertest laeuft in echtem Chromium und deckt die Ablaeufe ab, die
+# sich mit Unit-Tests nicht absichern lassen: Notensatz, Mausbedienung,
+# Wiedergabe, Export und Projektspeicher.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Typen, Unit- und Browsertests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Quellcode auschecken
+        uses: actions/checkout@v4
+
+      - name: Node einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Abhaengigkeiten installieren
+        run: npm ci
+
+      - name: Typen pruefen
+        run: npm run typecheck
+
+      - name: Unit-Tests
+        run: npm test
+
+      - name: Browser fuer die Ende-zu-Ende-Tests installieren
+        run: npx playwright install --with-deps chromium
+
+      - name: Browsertests
+        run: npm run test:e2e
+
+      - name: Screenshots als Artefakt sichern
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: e2e/screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
