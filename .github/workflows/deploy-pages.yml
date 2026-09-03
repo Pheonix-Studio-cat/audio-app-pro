@@ -4,7 +4,8 @@
 # vollstaendig statisch ausliefern. Vor dem Deploy laufen Typpruefung und
 # Unit-Tests, damit kein defekter Stand online geht.
 #
-# Einmalige Einrichtung im Repository:
+# Der Workflow aktiviert GitHub Pages bei Bedarf selbst (enablement: true).
+# Nachsehen laesst sich das unter:
 #   Settings -> Pages -> Build and deployment -> Source: "GitHub Actions"
 
 name: Auf GitHub Pages veroeffentlichen
@@ -57,6 +58,12 @@ jobs:
 
       - name: Pages einrichten
         uses: actions/configure-pages@v5
+        with:
+          # Aktiviert GitHub Pages im Repository, falls das noch nicht
+          # geschehen ist. Ohne diese Angabe bricht der Schritt mit
+          # "Get Pages site failed" ab und man muesste die Einstellung
+          # erst von Hand vornehmen.
+          enablement: true
 
       - name: Build hochladen
         uses: actions/upload-pages-artifact@v3
