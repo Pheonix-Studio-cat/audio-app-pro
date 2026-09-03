@@ -150,11 +150,22 @@ const CHORD_TEMPLATES: Array<{ quality: string; suffix: string; intervals: numbe
   { quality: 'sus2', suffix: 'sus2', intervals: [0, 2, 7] },
 ];
 
-/** Erkennt den wahrscheinlichsten Akkord in einem Chroma-Vektor. */
+/**
+ * Erkennt den wahrscheinlichsten Akkord in einem Chroma-Vektor.
+ *
+ * Wichtig ist die Vorpruefung auf Mehrstimmigkeit: ein einzelner Ton mit
+ * seinen Obertoenen erzeugt ebenfalls ein Chroma-Muster, das rein
+ * rechnerisch zu einer Akkordvorlage passt. Ohne diese Pruefung wuerde die
+ * App ueber eine schlichte Tonleiter Akkordsymbole wie "Csus4" schreiben.
+ */
 export function matchChord(chroma: Float32Array): { symbol: string; root: number; quality: string; confidence: number } | null {
   let energy = 0;
   for (let i = 0; i < 12; i++) energy += chroma[i];
   if (energy < 0.5) return null;
+
+  // Mindestens drei deutlich vertretene Halbtonklassen verlangen.
+  const strongClasses = Array.from(chroma).filter((value) => value >= 0.45).length;
+  if (strongClasses < 3) return null;
 
   let best = { score: -Infinity, root: 0, template: CHORD_TEMPLATES[0] };
   let second = -Infinity;
@@ -173,8 +184,10 @@ export function matchChord(chroma: Float32Array): { symbol: string; root: number
     }
   }
 
-  if (best.score < 0.6) return null;
+  if (best.score < 0.72) return null;
   const margin = Number.isFinite(second) ? Math.max(0, best.score - second) : 0;
+  // Ein knapper Vorsprung vor der zweitbesten Vorlage heisst: mehrdeutig.
+  if (margin < 0.04) return null;
   const confidence = Math.max(0, Math.min(1, best.score * 0.6 + margin * 2));
   return {
     symbol: `${PITCH_CLASS_NAMES[best.root]}${best.template.suffix}`,

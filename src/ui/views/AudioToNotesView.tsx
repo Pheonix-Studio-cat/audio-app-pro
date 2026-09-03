@@ -102,6 +102,7 @@ export function AudioToNotesView() {
 
       const events = quantizeNotes(result.notes, result.tempo, {
         grid: options.quantizeGrid,
+        beatOffset: result.beatOffset,
       });
       const score = eventsToScore(events, result, fileInfo?.name.replace(/\.[^.]+$/, '') ?? 'Analyse');
       setPreviewScore(score);

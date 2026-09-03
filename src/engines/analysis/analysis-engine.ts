@@ -11,7 +11,7 @@
 import type { AnalysisOptions, AnalysisResult, DetectedNote } from '../../core/types';
 import { DEFAULT_ANALYSIS_OPTIONS } from '../../core/types';
 import { normalize, resampleLinear } from '../audio/audio-engine';
-import { detectOnsets, estimateTempo, estimateTimeSignature } from './onset-tempo';
+import { detectOnsets, estimateTempo, estimateTimeSignature, refineTempo } from './onset-tempo';
 import { smoothPitchTrack, trackPitch } from './pitch-detection';
 import { segmentNotes, segmentPolyphonicNotes } from './note-segmentation';
 import {
@@ -22,6 +22,7 @@ import {
 } from './harmony';
 import { classifyInstrument, extractSpectralFeatures } from './instrument-classifier';
 import { keySignatureName, midiToFrequency } from '../../core/music-theory';
+import { DURATION_QUARTERS } from '../../core/types';
 
 /** Abtastrate, auf die vor der Analyse heruntergerechnet wird. */
 const ANALYSIS_SAMPLE_RATE = 22050;
@@ -127,6 +128,35 @@ export async function analyzeAudio(
     );
   }
 
+  // Tempo anhand der erkannten Notenanfaenge nachjustieren. Ohne diesen
+  // Schritt summiert sich schon eine kleine Abweichung ueber wenige Takte
+  // so weit auf, dass Noten ueber den Taktstrich rutschen.
+  let refinedTempo = tempo;
+  let beatOffset = 0;
+  if (!opts.fixedTempo && notes.length >= 3) {
+    await yieldToUi();
+    report(0.7, 'Tempo wird nachjustiert');
+    // Fuer die Tempo-Justierung wird hoechstens ein Achtelraster benutzt,
+    // auch wenn der Nutzer feiner quantisieren laesst.
+    const refinementGrid = Math.max(0.5, DURATION_QUARTERS[opts.quantizeGrid]);
+    const refinement = refineTempo(
+      notes.map((note) => note.start),
+      tempo,
+      refinementGrid,
+    );
+    // Nur uebernehmen, wenn die Anschlaege danach spuerbar besser
+    // auf dem Raster liegen.
+    if (refinement.error < 0.18) {
+      refinedTempo = refinement.bpm;
+      beatOffset = refinement.offset;
+    } else {
+      warnings.push(
+        'Die Anschlaege liegen nicht auf einem gleichmaessigen Raster. ' +
+          'Die Notenwerte koennen daher ungenau sein.',
+      );
+    }
+  }
+
   await yieldToUi();
   report(0.75, 'Tonart wird bestimmt');
   const chroma = averageChroma(signal, ANALYSIS_SAMPLE_RATE);
@@ -169,7 +199,8 @@ export async function analyzeAudio(
   return {
     notes,
     chords,
-    tempo,
+    tempo: Math.round(refinedTempo * 10) / 10,
+    beatOffset,
     tempoConfidence: opts.fixedTempo ? 1 : tempoEstimate.confidence,
     timeSignature,
     timeSignatureConfidence: timeSignatureEstimate.confidence,

@@ -18,6 +18,16 @@ export interface SegmentationOptions {
   minConfidence: number;
   /** Tonhoehenaenderung in Halbtoenen, die ein neues Segment ausloest. */
   pitchChangeThreshold: number;
+  /**
+   * Zeitfenster, in dem ein Segmentanfang auf einen erkannten Anschlag
+   * gezogen wird (in Sekunden).
+   *
+   * Die Tonhoehenverfolgung arbeitet mit langen Fenstern und kann den
+   * Beginn einer Note deshalb um bis zu ein halbes Fenster verfehlen. Die
+   * Anschlagserkennung ist zeitlich viel genauer, also gibt sie den
+   * Startzeitpunkt vor.
+   */
+  onsetSnapWindow: number;
   minMidi: number;
   maxMidi: number;
 }
@@ -26,6 +36,7 @@ export const DEFAULT_SEGMENTATION_OPTIONS: SegmentationOptions = {
   minNoteDuration: 0.06,
   minConfidence: 0.5,
   pitchChangeThreshold: 0.6,
+  onsetSnapWindow: 0.075,
   minMidi: 36,
   maxMidi: 96,
 };
@@ -96,11 +107,16 @@ export function segmentNotes(
   }
 
   const notes: DetectedNote[] = [];
+  const sortedOnsets = [...onsets].sort((a, b) => a - b);
+
   for (const segment of segments) {
     if (segment.points.length === 0) continue;
-    const start = track[segment.startIndex].time;
-    const endTime =
+    const rawStart = track[segment.startIndex].time;
+    // Auf den naechstgelegenen Anschlag ziehen, wenn einer in Reichweite ist.
+    const start = snapToOnset(rawStart, sortedOnsets, opts.onsetSnapWindow);
+    const rawEnd =
       segment.endIndex < track.length ? track[segment.endIndex].time : track[track.length - 1].time + frameTime;
+    const endTime = snapToOnset(rawEnd, sortedOnsets, opts.onsetSnapWindow);
     const duration = endTime - start;
     if (duration < opts.minNoteDuration) continue;
 
@@ -135,6 +151,33 @@ export function segmentNotes(
   }
 
   return mergeAdjacentNotes(notes);
+}
+
+/**
+ * Zieht einen Zeitpunkt auf den naechstgelegenen Anschlag, sofern dieser
+ * innerhalb des Fensters liegt. Sonst bleibt der Zeitpunkt unveraendert.
+ */
+function snapToOnset(time: number, onsets: number[], window: number): number {
+  if (onsets.length === 0 || window <= 0) return time;
+
+  // Binaere Suche nach dem naechstgelegenen Anschlag.
+  let low = 0;
+  let high = onsets.length - 1;
+  let best = onsets[0];
+  let bestDistance = Math.abs(onsets[0] - time);
+
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const distance = Math.abs(onsets[middle] - time);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = onsets[middle];
+    }
+    if (onsets[middle] < time) low = middle + 1;
+    else high = middle - 1;
+  }
+
+  return bestDistance <= window ? best : time;
 }
 
 /**

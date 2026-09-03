@@ -34,6 +34,21 @@ export interface QuantizationOptions {
   allowDots: boolean;
   /** Ueberbindungen ueber Taktgrenzen erzeugen. */
   allowTies: boolean;
+  /**
+   * Notenlaengen bis zum naechsten Anschlag verlaengern.
+   *
+   * Nach dem Anschlag klingt ein Ton meist leiser aus, sodass die
+   * Tonhoehenerkennung ihn frueher verliert als der Notenwert reicht. Ohne
+   * diese Korrektur entstehen daraus punktierte Achtel mit Sechzehntel-
+   * pausen, wo musikalisch schlicht Viertel gemeint sind.
+   *
+   * Wirklich kurz gespielte Noten (Staccato) bleiben kurz: verlaengert wird
+   * nur, wenn die erkannte Dauer mindestens `legatoThreshold` des Abstands
+   * zum naechsten Anschlag ausmacht.
+   */
+  legato: boolean;
+  /** Ab welchem Anteil des Anschlagsabstands verlaengert wird (0..1). */
+  legatoThreshold: number;
 }
 
 export const DEFAULT_QUANTIZATION_OPTIONS: QuantizationOptions = {
@@ -41,6 +56,8 @@ export const DEFAULT_QUANTIZATION_OPTIONS: QuantizationOptions = {
   beatOffset: 0,
   allowDots: true,
   allowTies: true,
+  legato: true,
+  legatoThreshold: 0.55,
 };
 
 /** Ein quantisiertes Ereignis auf dem Viertelraster. */
@@ -95,7 +112,41 @@ export function quantizeNotes(
   }
 
   events.sort((a, b) => a.startQuarters - b.startQuarters);
+  if (opts.legato) applyLegato(events, opts.legatoThreshold, gridQuarters);
   return resolveOverlaps(events, gridQuarters);
+}
+
+/**
+ * Verlaengert Noten bis zum naechsten Anschlag, wenn sie ohnehin fast so
+ * lang erkannt wurden. Das ergibt saubere Notenwerte statt einer Folge aus
+ * punktierten Werten und kurzen Pausen.
+ */
+function applyLegato(
+  events: QuantizedEvent[],
+  threshold: number,
+  gridQuarters: number,
+): void {
+  for (let i = 0; i < events.length - 1; i++) {
+    const current = events[i];
+    const next = events[i + 1];
+    const gapToNext = next.startQuarters - current.startQuarters;
+    if (gapToNext <= 0) continue;
+
+    // Bereits luecklos: nichts zu tun.
+    if (current.durationQuarters >= gapToNext - 1e-6) continue;
+
+    // Deutlich kuerzer gespielt: als Staccato belassen.
+    if (current.durationQuarters < gapToNext * threshold) continue;
+
+    current.durationQuarters = gapToNext;
+  }
+
+  // Die letzte Note auf einen sauberen Notenwert runden.
+  const last = events[events.length - 1];
+  if (last) {
+    const rounded = Math.round(last.durationQuarters / gridQuarters) * gridQuarters;
+    last.durationQuarters = Math.max(gridQuarters, rounded);
+  }
 }
 
 /** Fasst zeitgleich beginnende Noten zu einem Akkord zusammen. */
@@ -283,7 +334,7 @@ function applyChordSymbols(measures: Measure[], analysis: AnalysisResult, capaci
   const secondsPerQuarter = 60 / analysis.tempo;
 
   for (const chord of analysis.chords) {
-    if (chord.confidence < 0.45) continue;
+    if (chord.confidence < 0.6) continue;
     const quarters = chord.start / secondsPerQuarter;
     const measureIndex = Math.floor(quarters / capacity);
     const measure = measures[measureIndex];

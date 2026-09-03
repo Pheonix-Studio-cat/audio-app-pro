@@ -148,7 +148,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const notify = useCallback((kind: Toast['kind'], message: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setToasts((current) => [...current, { id, kind, message }]);
+    setToasts((current) => {
+      // Gleiche Meldung nicht doppelt stapeln.
+      const withoutDuplicate = current.filter((t) => t.message !== message);
+      // Hoechstens drei Meldungen gleichzeitig, sonst verdecken sie den Inhalt.
+      return [...withoutDuplicate, { id, kind, message }].slice(-3);
+    });
     // Hinweise verschwinden von selbst, Fehler bleiben laenger stehen.
     window.setTimeout(() => {
       setToasts((current) => current.filter((t) => t.id !== id));

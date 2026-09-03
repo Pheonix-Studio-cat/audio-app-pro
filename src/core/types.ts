@@ -174,6 +174,11 @@ export interface AnalysisResult {
   notes: DetectedNote[];
   chords: DetectedChord[];
   tempo: number;
+  /**
+   * Zeitlicher Versatz der ersten Zaehlzeit in Sekunden. Wird beim
+   * Quantisieren abgezogen, damit das Notenraster zu den Anschlaegen passt.
+   */
+  beatOffset: number;
   tempoConfidence: number;
   timeSignature: TimeSignature;
   timeSignatureConfidence: number;

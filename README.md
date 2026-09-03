@@ -42,7 +42,7 @@ Import von MP3, WAV, M4A, FLAC, AAC und OGG. Die Analyse liefert:
 | --- | --- |
 | Tonhoehe | YIN mit kumulativer Mittelwertnormierung, Oktavkorrektur ueber das Harmonic Product Spectrum |
 | Anschlaege | Spectral Flux mit adaptiver Median-Schwelle |
-| Tempo | Autokorrelation der Onset-Huellkurve samt Phasenbestimmung |
+| Tempo | Autokorrelation der Onset-Huellkurve, danach Feinabgleich am Notenraster |
 | Taktart | Vergleich der Betonungsmuster fuer 4/4, 3/4, 2/4 und 6/8 |
 | Tonart | Krumhansl-Schmuckler-Profile auf dem Chroma-Vektor |
 | Akkorde | Vorlagenvergleich ueber neun Akkordtypen |
@@ -204,14 +204,18 @@ Diese Punkte stehen auch in der App selbst unter Einstellungen.
 
 ## Tests
 
-- **39 Unit-Tests** (`npm test`): Tonhoehenerkennung gegen synthetische
+- **46 Unit-Tests** (`npm test`): Tonhoehenerkennung gegen synthetische
   Signale mit bekannter Frequenz, Tempo- und Onset-Erkennung, Quantisierung,
   Akkord- und Tonarterkennung sowie die Byte- und XML-Struktur der Exporte.
-- **25 Browser-Tests** (`npm run test:e2e`): Notensatz, Mausbedienung,
+  Darunter fuenf Tests der **gesamten Kette**: aus synthetischem Audio mit
+  bekannter Melodie muss am Ende die richtige Notenschrift entstehen -
+  richtige Tonhoehen, richtige Notenwerte, keine erfundenen Akkorde.
+- **31 Browser-Tests** (`npm run test:e2e`): Notensatz, Mausbedienung,
   Wiedergabe, alle fuenf Exportformate, Projektspeicher, Uebungsmodus ohne
-  Mikrofon und die Zusicherung, dass keine externen Verbindungen entstehen.
-  Der Bildexport wird dabei pixelweise geprueft, damit fehlende
-  Notenzeichen nicht unbemerkt bleiben.
+  Mikrofon, der komplette Weg von der Audiodatei bis zur Partitur und die
+  Zusicherung, dass keine externen Verbindungen entstehen. Der Bildexport
+  wird pixelweise geprueft, damit fehlende Notenzeichen nicht unbemerkt
+  bleiben.
 
 ## Lizenz
 

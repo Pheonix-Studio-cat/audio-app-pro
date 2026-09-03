@@ -105,20 +105,26 @@ export function App() {
         <div
           style={{
             position: 'fixed',
-            bottom: 20,
-            right: 20,
+            bottom: 16,
+            right: 16,
             display: 'flex',
             flexDirection: 'column',
             gap: 8,
             zIndex: 200,
-            maxWidth: 420,
+            width: 'min(360px, calc(100vw - 32px))',
+            pointerEvents: 'none',
           }}
         >
           {toasts.map((toast) => (
             <div
               key={toast.id}
               className={`notice notice-${toast.kind}`}
-              style={{ boxShadow: 'var(--shadow-lg)', background: 'var(--bg-elevated)' }}
+              style={{
+                boxShadow: 'var(--shadow-lg)',
+                background: 'var(--bg-elevated)',
+                pointerEvents: 'auto',
+                fontSize: 12,
+              }}
               role="status"
             >
               <div style={{ flex: 1 }}>{toast.message}</div>

@@ -214,10 +214,15 @@ export function trackPitch(
   options: Partial<YinOptions> = {},
 ): PitchTrackPoint[] {
   const track: PitchTrackPoint[] = [];
+  // Der Zeitstempel bezieht sich auf die Mitte des Analysefensters, nicht
+  // auf seinen Anfang. Andernfalls waeren alle Noten systematisch um ein
+  // halbes Fenster zu frueh - bei 2048 Abtastwerten immerhin rund 46 ms.
+  // Ueber mehrere Takte summiert sich das zu falschen Notenwerten auf.
+  const centerOffset = frameSize / 2 / sampleRate;
   for (let start = 0; start + frameSize <= samples.length; start += hopSize) {
     const frame = samples.subarray(start, start + frameSize);
     const result = detectPitchYin(frame, sampleRate, options);
-    track.push({ ...result, time: start / sampleRate });
+    track.push({ ...result, time: start / sampleRate + centerOffset });
   }
   return track;
 }

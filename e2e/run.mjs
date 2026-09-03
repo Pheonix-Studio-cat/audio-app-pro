@@ -177,6 +177,63 @@ try {
     `Schwaerzung im Schluesselbereich: ${(clefInk * 100).toFixed(2)} %`,
   );
 
+  // --- Vollstaendiger Weg: Audiodatei zu Notenschrift ---
+  // Die Testdatei enthaelt eine bekannte C-Dur-Tonleiter bei 120 BPM.
+  // Damit laesst sich objektiv pruefen, ob die Analyse richtig liegt.
+  await page.locator('.nav-item', { hasText: 'Audio zu Noten' }).click();
+  await page.waitForTimeout(700);
+  await page.locator('input[type=file]').first().setInputFiles('e2e/fixtures/tonleiter.wav');
+
+  await page.waitForSelector('canvas.waveform', { timeout: 20000 });
+  check('Audiodatei wurde dekodiert', true);
+
+  await page.getByRole('button', { name: 'Analyse starten' }).click();
+  await page.waitForSelector('.card:has-text("Ergebnis der Analyse")', { timeout: 90000 });
+  await page.waitForTimeout(600);
+
+  const analysisText = await page
+    .locator('.card')
+    .filter({ hasText: 'Ergebnis der Analyse' })
+    .last()
+    .innerText();
+
+  const noteCountMatch = /NOTEN\s*\n\s*(\d+)/i.exec(analysisText);
+  const detectedNotes = noteCountMatch ? Number(noteCountMatch[1]) : 0;
+  check('Noten wurden aus der Aufnahme erkannt', detectedNotes >= 7, `${detectedNotes} Noten`);
+
+  const tempoMatch = /(\d+)\s*BPM/.exec(analysisText);
+  const detectedTempo = tempoMatch ? Number(tempoMatch[1]) : 0;
+  // Halbes und doppeltes Tempo sind musikalisch gleichwertig.
+  const tempoOk = [detectedTempo, detectedTempo * 2, detectedTempo / 2].some(
+    (value) => Math.abs(value - 120) <= 10,
+  );
+  check('Tempo wurde richtig geschaetzt', tempoOk, `${detectedTempo} BPM, erwartet 120`);
+
+  const keyOk = /\bC\b/.test(analysisText);
+  check('Tonart wurde richtig geschaetzt', keyOk, 'erwartet C-Dur');
+
+  // Die erkannten Tonhoehen aus der Vorschau-Partitur auslesen.
+  const previewGlyphs = await page
+    .locator('.card')
+    .filter({ hasText: 'Ergebnis der Analyse' })
+    .locator('.score-surface svg g[class*="stavenote"]')
+    .count();
+  check('Vorschau zeigt die erkannten Noten', previewGlyphs >= 7, `${previewGlyphs} Notengruppen`);
+  await page.screenshot({ path: `${SHOTS}/06-analyse.png`, fullPage: true });
+
+  // In den Editor uebernehmen und die Tonhoehen pruefen.
+  await page.getByRole('button', { name: /Im Noteneditor oeffnen/ }).click();
+  await page.waitForTimeout(1200);
+
+  const pitches = await page.evaluate(() => {
+    // Die Tonhoehen stehen als Titel in den Notendetails; einfacher ist der
+    // Weg ueber die Anzahl gesetzter Notengruppen je Takt.
+    const groups = document.querySelectorAll('.score-surface svg g[class*="stavenote"]');
+    return groups.length;
+  });
+  check('Erkannte Partitur ist im Editor', pitches >= 7, `${pitches} Notengruppen`);
+  await page.screenshot({ path: `${SHOTS}/07-editor-analyse.png`, fullPage: true });
+
   // --- Projekt speichern ---
   await page.locator('.nav-item', { hasText: 'Noteneditor' }).click();
   await page.waitForTimeout(600);

@@ -28,7 +28,7 @@ export function computeOnsetEnvelope(
   sampleRate: number,
   frameSize = 2048,
   hopSize = 512,
-): { envelope: Float32Array; hopTime: number } {
+): { envelope: Float32Array; hopTime: number; frameCenterOffset: number } {
   const frameCount = Math.max(0, Math.floor((samples.length - frameSize) / hopSize) + 1);
   const envelope = new Float32Array(Math.max(0, frameCount));
   let previous: Float32Array | null = null;
@@ -51,7 +51,16 @@ export function computeOnsetEnvelope(
     }
     previous = spectrum;
   }
-  return { envelope, hopTime: hopSize / sampleRate };
+  return {
+    envelope,
+    hopTime: hopSize / sampleRate,
+    // Ein Fenster beschreibt das Signal um seine Mitte herum. Wird der
+    // Fensteranfang als Zeitpunkt genommen, liegen alle Anschlaege
+    // systematisch ein halbes Fenster zu frueh - bei 2048 Abtastwerten
+    // rund 46 ms, was sich ueber mehrere Takte zu falschen Notenwerten
+    // aufsummiert.
+    frameCenterOffset: frameSize / 2 / sampleRate,
+  };
 }
 
 /**
@@ -65,7 +74,12 @@ export function detectOnsets(
   sensitivity = 1.3,
   hopSize = 512,
 ): OnsetResult {
-  const { envelope, hopTime } = computeOnsetEnvelope(samples, sampleRate, 2048, hopSize);
+  const { envelope, hopTime, frameCenterOffset } = computeOnsetEnvelope(
+    samples,
+    sampleRate,
+    2048,
+    hopSize,
+  );
   const onsets: number[] = [];
   if (envelope.length < 3) return { onsets, envelope, hopTime };
 
@@ -94,7 +108,7 @@ export function detectOnsets(
     if (!isPeak) continue;
     if (value < threshold[i] || value < floor) continue;
     if (i - lastOnsetFrame < minGapFrames) continue;
-    onsets.push(i * hopTime);
+    onsets.push(Math.max(0, i * hopTime + frameCenterOffset));
     lastOnsetFrame = i;
   }
 
@@ -239,4 +253,74 @@ export function estimateTimeSignature(
   const margin = runnerUp && runnerUp.ratio > 0 ? (best.ratio - runnerUp.ratio) / best.ratio : 0;
   const confidence = Math.max(0, Math.min(1, margin * 2.5));
   return { timeSignature: best.ts, confidence };
+}
+
+
+export interface TempoRefinement {
+  bpm: number;
+  /** Zeitlicher Versatz der ersten Zaehlzeit in Sekunden. */
+  offset: number;
+  /** Mittlere Abweichung der Anschlaege vom Raster, in Anteilen eines Rasterschritts. */
+  error: number;
+}
+
+/**
+ * Verfeinert die Tempo-Schaetzung anhand der tatsaechlich erkannten
+ * Notenanfaenge.
+ *
+ * Die Autokorrelation liefert das Tempo nur so genau, wie es die
+ * Fensterbreite zulaesst. Schon zwei Prozent Abweichung summieren sich
+ * ueber acht Zaehlzeiten zu einem Sechzehntel und lassen Noten ueber den
+ * Taktstrich rutschen. Hier wird deshalb das Paar aus Tempo und Versatz
+ * gesucht, bei dem die Anschlaege am besten auf dem Notenraster liegen.
+ *
+ * Bewusst wird ein grobes Raster benutzt (standardmaessig Achtel). Ein
+ * feines Raster wuerde jede einzelne Ungenauigkeit der Anschlagserkennung
+ * mitbewerten und koennte ein leicht falsches Tempo mit passendem Versatz
+ * bevorzugen. Anschlaege liegen in der Praxis fast immer auf Achteln oder
+ * groeber.
+ *
+ * @param onsetTimes Startzeiten der erkannten Noten in Sekunden
+ * @param initialBpm Ausgangsschaetzung
+ * @param gridQuarters Rasterweite in Vierteln (Standard: Achtel)
+ */
+export function refineTempo(
+  onsetTimes: number[],
+  initialBpm: number,
+  gridQuarters = 0.5,
+): TempoRefinement {
+  if (onsetTimes.length < 3 || initialBpm <= 0) {
+    return { bpm: initialBpm, offset: 0, error: 1 };
+  }
+
+  const sorted = [...onsetTimes].sort((a, b) => a - b);
+  const searchRange = 0.14; // plus/minus 14 Prozent
+  const bpmSteps = 140;
+  const offsetSteps = 24;
+
+  let best: TempoRefinement = { bpm: initialBpm, offset: 0, error: Number.POSITIVE_INFINITY };
+
+  for (let i = 0; i <= bpmSteps; i++) {
+    const bpm = initialBpm * (1 - searchRange + (2 * searchRange * i) / bpmSteps);
+    if (bpm <= 20 || bpm > 320) continue;
+    const gridSeconds = (60 / bpm) * gridQuarters;
+
+    for (let j = 0; j < offsetSteps; j++) {
+      const offset = (gridSeconds * j) / offsetSteps;
+
+      let squaredError = 0;
+      for (const time of sorted) {
+        const position = (time - offset) / gridSeconds;
+        const distance = Math.abs(position - Math.round(position));
+        squaredError += distance * distance;
+      }
+      const error = Math.sqrt(squaredError / sorted.length);
+
+      if (error < best.error) best = { bpm, offset, error };
+    }
+  }
+
+  // Ohne echte Verbesserung bleibt die Ausgangsschaetzung stehen.
+  if (!Number.isFinite(best.error)) return { bpm: initialBpm, offset: 0, error: 1 };
+  return best;
 }

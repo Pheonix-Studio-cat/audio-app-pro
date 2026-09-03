@@ -84,6 +84,43 @@ describe('Quantisierung', () => {
     expect(events[3].durationQuarters).toBeCloseTo(2, 5);
   });
 
+  it('verlaengert kurz erkannte Noten bis zum naechsten Anschlag', () => {
+    // Erkannte Dauer je 0,38 s statt 0,5 s, weil der Ton leiser ausklingt.
+    // Erwartet werden trotzdem vier saubere Viertelnoten ohne Pausen.
+    const notes: DetectedNote[] = [0, 0.5, 1.0, 1.5].map((start, index) => ({
+      start,
+      duration: 0.38,
+      midi: 60 + index * 2,
+      frequency: midiToFrequency(60 + index * 2),
+      cents: 0,
+      confidence: 0.9,
+      velocity: 0.8,
+    }));
+
+    const events = quantizeNotes(notes, 120);
+    expect(events).toHaveLength(4);
+    for (let i = 0; i < 3; i++) {
+      expect(events[i].durationQuarters).toBeCloseTo(1, 5);
+    }
+  });
+
+  it('laesst deutlich kuerzere Noten kurz (Staccato)', () => {
+    const notes: DetectedNote[] = [0, 0.5, 1.0].map((start, index) => ({
+      start,
+      duration: 0.12,
+      midi: 60 + index,
+      frequency: midiToFrequency(60 + index),
+      cents: 0,
+      confidence: 0.9,
+      velocity: 0.8,
+    }));
+
+    const events = quantizeNotes(notes, 120);
+    // 0,12 s sind bei 120 BPM knapp eine Sechzehntel und damit klar
+    // kuerzer als der Abstand von einer Viertel.
+    expect(events[0].durationQuarters).toBeLessThan(0.5);
+  });
+
   it('fasst gleichzeitige Noten zu einem Akkord zusammen', () => {
     const notes: DetectedNote[] = [
       { start: 0, duration: 1, midi: 60, frequency: 261.6, cents: 0, confidence: 0.8, velocity: 0.8 },
@@ -101,6 +138,7 @@ describe('Partiturerzeugung', () => {
     notes: [],
     chords: [],
     tempo: 120,
+    beatOffset: 0,
     tempoConfidence: 0.9,
     timeSignature: { beats: 4, beatType: 4 },
     timeSignatureConfidence: 0.8,
@@ -176,6 +214,21 @@ describe('Harmonieanalyse', () => {
     const match = matchChord(chroma);
     expect(match).not.toBeNull();
     expect(match!.symbol).toBe('Am');
+  });
+
+  it('meldet bei einem Einzelton keinen Akkord', () => {
+    // Ein einzelner Ton erzeugt mit seinen Obertoenen ebenfalls ein
+    // Chroma-Muster. Ohne Pruefung auf Mehrstimmigkeit wuerde die App
+    // darueber faelschlich Akkordsymbole schreiben.
+    for (const midi of [60, 64, 67, 69]) {
+      const chroma = averageChroma(chordSignal([midi]), SAMPLE_RATE);
+      expect(matchChord(chroma)).toBeNull();
+    }
+  });
+
+  it('meldet bei einem Zweiklang keinen vollen Akkord', () => {
+    const chroma = averageChroma(chordSignal([60, 67]), SAMPLE_RATE);
+    expect(matchChord(chroma)).toBeNull();
   });
 
   it('bestimmt die Tonart einer C-Dur-Tonleiter', () => {
