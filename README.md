@@ -40,9 +40,9 @@ Ein Push auf `main` baut die App und veroeffentlicht sie ueber
 vorher: Typpruefung und Unit-Tests laufen im selben Job, ein defekter
 Stand geht nicht online.
 
-Damit das greift, muss im Repository einmalig
-**Settings -> Pages -> Build and deployment -> Source** auf
-**GitHub Actions** stehen.
+Der Workflow aktiviert GitHub Pages bei Bedarf selbst. Nachsehen laesst
+sich die Einstellung unter **Settings -> Pages -> Build and deployment**;
+als Quelle muss dort **GitHub Actions** stehen.
 
 Auf Pages liegt die App in einem Unterverzeichnis. Der Workflow setzt
 deshalb `VITE_BASE` auf den Repository-Namen; Schriften und ffmpeg-Kern
