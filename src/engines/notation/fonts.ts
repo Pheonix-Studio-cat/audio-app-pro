@@ -13,8 +13,18 @@
  */
 import { Font } from 'vexflow';
 
-/** Basis-Pfad, unter dem die Schriften ausgeliefert werden. */
-const FONT_BASE = `${import.meta.env.BASE_URL ?? '/'}fonts/`.replace(/\/+/g, '/');
+/**
+ * Basis-Pfad, unter dem die Schriften ausgeliefert werden.
+ *
+ * `BASE_URL` beruecksichtigt, dass die App auch in einem Unterverzeichnis
+ * liegen kann - etwa auf GitHub Pages unter "/audio-app-pro/".
+ */
+const FONT_BASE = `${withTrailingSlash(import.meta.env.BASE_URL || '/')}fonts/`;
+
+/** Haengt einen Schraegstrich an, falls er fehlt. */
+function withTrailingSlash(path: string): string {
+  return path.endsWith('/') ? path : `${path}/`;
+}
 
 const FONT_FILES: Array<{ name: string; file: string; weight?: string }> = [
   { name: 'Bravura', file: 'bravura.woff2' },

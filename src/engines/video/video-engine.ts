@@ -172,7 +172,10 @@ async function loadFfmpeg(
   const { FFmpeg } = await import('@ffmpeg/ffmpeg');
   const ffmpeg = new FFmpeg();
 
-  const base = `${import.meta.env.BASE_URL ?? '/'}ffmpeg`.replace(/\/+/g, '/');
+  // BASE_URL beruecksichtigt eine Auslieferung in einem Unterverzeichnis,
+  // etwa auf GitHub Pages unter "/audio-app-pro/".
+  const baseUrl = import.meta.env.BASE_URL || '/';
+  const base = `${baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`}ffmpeg`;
   await ffmpeg.load({
     coreURL: `${base}/ffmpeg-core.js`,
     wasmURL: `${base}/ffmpeg-core.wasm`,

@@ -2,6 +2,14 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  /**
+   * Basis-Pfad der Auslieferung.
+   *
+   * Lokal laeuft die App unter "/". Auf GitHub Pages liegt sie in einem
+   * Unterverzeichnis mit dem Namen des Repositories, deshalb setzt der
+   * Deploy-Workflow VITE_BASE entsprechend.
+   */
+  base: process.env.VITE_BASE || '/',
   plugins: [react()],
   server: {
     port: 5173,

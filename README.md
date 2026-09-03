@@ -7,6 +7,9 @@ und laesst dich Noten mit dem Mikrofon ueben.
 **Alles laeuft lokal im Browser.** Es gibt keinen Server, der deine Dateien
 empfaengt, keinen Analysedienst und keine Verbindung zu einem CDN.
 
+**Online ausprobieren:**
+https://pheonix-studio-cat.github.io/audio-app-pro/
+
 ---
 
 ## Schnellstart
@@ -29,6 +32,26 @@ npm run typecheck    # TypeScript pruefen
 Der Build kopiert vorher zwei Dinge aus `node_modules` nach `public/`:
 den ffmpeg.wasm-Kern und die Notenschriftarten. Beide werden dadurch von
 der eigenen Herkunft ausgeliefert statt von einem fremden Server.
+
+### Veroeffentlichung
+
+Ein Push auf `main` baut die App und veroeffentlicht sie ueber
+`.github/workflows/deploy-pages.yml` auf GitHub Pages. Getestet wird
+vorher: Typpruefung und Unit-Tests laufen im selben Job, ein defekter
+Stand geht nicht online.
+
+Damit das greift, muss im Repository einmalig
+**Settings -> Pages -> Build and deployment -> Source** auf
+**GitHub Actions** stehen.
+
+Auf Pages liegt die App in einem Unterverzeichnis. Der Workflow setzt
+deshalb `VITE_BASE` auf den Repository-Namen; Schriften und ffmpeg-Kern
+werden ueber `import.meta.env.BASE_URL` entsprechend aufgeloest. Lokal
+bleibt der Basis-Pfad `/`.
+
+Da GitHub Pages keine eigenen HTTP-Kopfzeilen erlaubt, steht dort kein
+`SharedArrayBuffer` zur Verfuegung. Die App nutzt deshalb den
+einkernigen ffmpeg-Build, der ohne diese Voraussetzung auskommt.
 
 ---
 
