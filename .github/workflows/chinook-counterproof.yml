@@ -1,0 +1,48 @@
+# Chinook Security — Gegenproben-Bot.
+#
+# Er bricht den Code dieses Repos absichtlich und laesst die eigenen Tests
+# laufen. Was gruen bleibt, ist ein Verhalten, das nichts prueft.
+#
+# Eigene Datei, damit `ci.yml` unberuehrt bleibt: faellt dieser Schritt, faellt
+# nicht der Rest.
+name: Chinook Security — Gegenprobe
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Montags. Mutationstesten kostet einen vollen Testlauf je Mutation --
+    # das gehoert nicht in jeden Push.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  gegenprobe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Nur die Unit-Tests (`npm test` = vitest run), nicht die e2e-Laeufe:
+      # jede Mutation kostet einen vollen Durchlauf, und Playwright wuerde das
+      # Budget in Minuten statt in Sekunden messen.
+      #
+      # Ohne gruene Vorlage endet der Schritt mit 2 ("beweist nichts") statt
+      # mit 0. Das ist Absicht: waere die Suite schon vorher rot, liesse sich
+      # eine gefangene Mutation nicht von einem kaputten Stand unterscheiden.
+      - name: Gegenprobe
+        uses: Pheonix-Studio-cat/Chinook-security/actions/counterproof@8d74ad3b09863684cd638ab774872a27dee1965b # Gegenproben-Bot
+        with:
+          test-command: "npm test"
+          budget: "20"
+          test-timeout: "600"
+          fail-on: "high"
+          sarif: ""
