@@ -39,7 +39,7 @@ jobs:
       # mit 0. Das ist Absicht: waere die Suite schon vorher rot, liesse sich
       # eine gefangene Mutation nicht von einem kaputten Stand unterscheiden.
       - name: Gegenprobe
-        uses: Pheonix-Studio-cat/Chinook-security/actions/counterproof@fce0653a7dcb16a56f17b7280e10c700bbf25700 # Gegenproben-Bot
+        uses: Pheonix-Studio-cat/Chinook-security/actions/counterproof@a43e038092e08c6f5000d4063dbf005b02821cab # Gegenproben-Bot
         with:
           test-command: "npm test"
           budget: "20"
